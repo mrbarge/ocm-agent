@@ -27,6 +27,7 @@ func AMReceiver() Handler {
 				http.Error(w, "Bad request body", http.StatusBadRequest)
 				return
 			}
+
 			// process request
 			go processAMReceiver(alertData)
 

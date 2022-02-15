@@ -2,13 +2,14 @@ package serve
 
 import (
 	"fmt"
+	"github.com/openshift/ocm-agent/pkg/config"
+	"github.com/spf13/viper"
 	"net/http"
 	"strings"
 
 	"github.com/gorilla/mux"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-
 	kcmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubectl/pkg/util/templates"
 
@@ -94,6 +95,10 @@ func NewServeCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&o.services, servicesFlagName, "", "", "OCM service name")
 	cmd.Flags().StringVarP(&o.accessToken, accessTokenFlagName, "t", "", "Access token for OCM")
 	cmd.PersistentFlags().BoolVarP(&o.debug, debugFlagName, "d", false, "Debug mode enable")
+
+	viper.BindPFlag(config.AccessToken, cmd.Flags().Lookup(accessTokenFlagName))
+	viper.BindPFlag(config.Services, cmd.Flags().Lookup(servicesFlagName))
+	viper.BindPFlag(config.OcmUrl, cmd.Flags().Lookup(ocmURLFlagName))
 
 	_ = cmd.MarkFlagRequired(ocmURLFlagName)
 	_ = cmd.MarkFlagRequired(servicesFlagName)
