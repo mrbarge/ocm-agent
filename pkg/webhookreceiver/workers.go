@@ -24,11 +24,11 @@ const (
 func processAMReceiver(d AMReceiverData) {
 	log.WithField("AMReceiverData", d).Info("Process alert data")
 
-	for _, alert := range d.Alerts.Firing() {
+	for _, alert := range d.Alerts {
 		if template, ok := alert.Annotations[TemplateAnnotation]; ok {
 
 			log.WithField("template", template).Info("would send an SL for this template")
-			err := sendSLForTemplate(template)
+			err := sendSLForTemplate(template, alert.Status)
 			if err != nil {
 				log.WithError(err).Error("well that aint good")
 			}
@@ -39,7 +39,7 @@ func processAMReceiver(d AMReceiverData) {
 	}
 }
 
-func sendSLForTemplate(t string) error {
+func sendSLForTemplate(t string, status string) error {
 	c, err := util.BuildDynamicClient()
 	if err != nil {
 		return err
@@ -57,30 +57,46 @@ func sendSLForTemplate(t string) error {
 	}
 	uobj := oa.UnstructuredContent()
 	uobjSpec := uobj["spec"].(map[string]interface{})
-	if _, ok := uobjSpec["template"]; !ok {
-		return fmt.Errorf("no template CR found")
+	if _, ok := uobjSpec["templates"]; !ok {
+		return fmt.Errorf("no templates CR field found")
 	}
-	template := fmt.Sprintf("%v", uobjSpec["template"])
+	templates := uobjSpec["templates"].(map[string]interface{})
 
-	if _, ok := uobj["status"]; ok {
-		// We have a status, when was the last time we sent?
-		uobjStatus := uobj["status"].(map[string]interface{})
-		if uobjStatus != nil {
-			if _, ok := uobjStatus["lastSent"]; ok {
-				lastSent := fmt.Sprintf("%v", uobjStatus["lastSent"])
-				ts, _ := time.Parse("2006-01-02T15:04:05Z", lastSent)
-				if time.Now().Sub(ts) < (30 * time.Minute) {
-					log.Info("I sent a SL in the last 30 minutes, not going to send again")
-					return nil
+	// only care about this if the alert is firing
+	if status == "firing" {
+		if _, ok := uobj["status"]; ok {
+			// We have a status, when was the last time we sent?
+			uobjStatus := uobj["status"].(map[string]interface{})
+			if uobjStatus != nil {
+				if _, ok := uobjStatus["lastSent"]; ok {
+					lastSent := fmt.Sprintf("%v", uobjStatus["lastSent"])
+					ts, _ := time.Parse("2006-01-02T15:04:05Z", lastSent)
+					if time.Now().Sub(ts) < (30 * time.Minute) {
+						log.Info("I sent a SL in the last 30 minutes, not going to send again")
+						return nil
+					}
 				}
 			}
 		}
 	}
 
-	log.WithField("template", template).Info("id send an SL except this isnt written yet")
-	err = sendSL(template)
-	if err != nil {
-		return err
+	firing_template := fmt.Sprintf("%v", templates["firing"])
+	resolved_template := fmt.Sprintf("%v", templates["resolved"])
+	switch status {
+	case "firing":
+		err = sendSL(firing_template)
+		if err != nil {
+			return err
+		}
+		break
+	case "resolved":
+		err = sendSL(resolved_template)
+		if err != nil {
+			return err
+		}
+		break
+	default:
+		log.WithField("status", status).Info("dunno what this status is")
 	}
 
 	// Update lastSent timestamp
